@@ -19,10 +19,10 @@ program propagate
    implicit none
 
    integer :: npoints,ntime,snapshot,i
-   real(8) :: alpha,dt,t,dx,x0, norm, energy, energy_t0, survival_probability
-   complex(8) :: correlation
-   real(8), allocatable :: pot(:),kin(:)
-   complex(8), allocatable :: psi(:),psi0(:),exppot(:),expkin(:)
+   real(8) :: alpha,dt,dx,x0, energy_t0
+   real(8), dimension(:), allocatable :: pot, kin, t, norm, energy, &
+   & survival_probability, eigenval_spectrum
+   complex(8), dimension(:), allocatable :: psi, psi0, exppot, expkin, correlation
 
    open(unit=10,file='wavepacket_analysis')
    read(10,*) npoints               !Number of lattice points
@@ -45,6 +45,8 @@ program propagate
    allocate(psi(npoints),psi0(npoints))
    allocate(pot(npoints),exppot(npoints))
    allocate(kin(npoints),expkin(npoints))
+   allocate(t(ntime),norm(ntime),energy(ntime),survival_probability(ntime))
+   allocate(correlation(ntime), eigenval_spectrum(ntime))
 
    dx=length/dble(npoints)
 
@@ -68,25 +70,35 @@ program propagate
    call calcenergy(npoints, psi, dx, pot, kin, energy_t0)
    ! Start the propagation
    do i=1,ntime
-      t=i*dt
+      t(i)=dble(i)*dt
       psi=psi*exppot                                   !Multiply psi with exp(-i*dt*potential)
       call fourier(1,npoints,psi)                      !Forward FFT to momentum space
       psi=psi*expkin                                   !Multiply psi with the exp(-i*dt*kinetic operator)
       call fourier(-1,npoints,psi)                     !Backward FFT to position space
-      call calcnorm(npoints, psi, dx, t, norm)
-      write(12,'(f10.2,2x,f10.4)') t, norm
-      call calcenergy(npoints, psi, dx, pot, kin, energy)
-      write(13,'(f10.2,2x,f10.4,3x,f10.4,10x,f10.4)') t, energy, &
-      & energy * au2kcalmol, (energy - energy_t0) * au2kcalmol
-      call autocorrelation(npoints, psi0, psi, dx, correlation,&
-      & survival_probability)
-      write(14,'(f10.2,2x,f10.4)') t, survival_probability
+      call calcnorm(npoints, psi, dx, t(i), norm(i))
+      write(12,'(f10.2,2x,f10.4)') t(i), norm(i)
+      call calcenergy(npoints, psi, dx, pot, kin, energy(i))
+      write(13,'(f10.2,2x,f10.4,3x,f10.4,10x,f10.4)') t(i), energy(i), &
+      & energy(i) * au2kcalmol, (energy(i) - energy_t0) * au2kcalmol
+      call autocorrelation(npoints, psi0, psi, dx, correlation(i), &
+      & survival_probability(i))
+      write(14,'(f10.2,2x,f10.4)') t(i), survival_probability(i)
    end do                                            !End propagation
    close(12)
    close(13)
    close(14)
 
-   ! call spectrum()
+   call spectrum(ntime, correlation, energy, t, dt, eigenval_spectrum)
+
+   open(unit=15,file='eigenvalue-spectra')
+   write(15,'(a,4x,a,4x,a,4x,a)') 'Energy (kcal/mol)', 'Energy (cm-1)', &
+   'C(E) (kcal/mol)', 'C(E) (cm-1)'
+   do i=1,ntime
+      write(15,'(f10.4,10x,f10.4,4x,f10.4,13x,f10.4)') energy(i), &
+      & energy(i) * au2invcm, eigenval_spectrum(i), &
+      & survival_probability(i) * au2invcm
+   end do
+   close(15)
 
    deallocate(psi,psi0)
    deallocate(pot,exppot)
@@ -261,10 +273,23 @@ end subroutine autocorrelation
 !------------------------------!
 
 !---------------------!
-subroutine spectrum()
+subroutine spectrum(n, C, E, t, dt, spect)
 !---------------------!
    use parameters
    implicit none
+   integer, intent(in) :: n 
+   complex(kind=8), dimension(n), intent(in) :: C
+   real(kind=8), dimension(n), intent(in) :: E, t
+   real(kind=8), intent(in) :: dt
+   real(kind=8), dimension(n), intent(out) :: spect 
+   integer :: i 
+
+   spect = 0.d0
+   do i = 1, n
+      ! Note: (0,1) is the imaginary unit, i
+      spect(i) = C(i) * exp((0,1) * E(i) * t(i))
+   end do
+   spect = 1.d0/(2.d0 * pi) * spect * dt
 
 end subroutine spectrum
 !-----------------------!
