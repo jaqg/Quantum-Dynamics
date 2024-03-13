@@ -5,7 +5,7 @@
  real(8), parameter :: length=5.12d0   ! length of the box (in Bohr)
  real(8), parameter :: mass = 1822.88839d0 != 1 atomic mass unit (=1 g/mol)
  real(8), parameter :: pi=3.141592653589793d0
- real(8), parameter :: au2kcalmol=627.509d0
+ real(8), parameter :: au2kcalmol=627.509d0  ! = kcalmol-1/au
  real(8), parameter :: fs2au=41.341373336561d0
  real(8), parameter :: c=2.99792458D8  ! m/s
  real(8) :: angfreq, barrier
@@ -26,7 +26,7 @@ program propagate
    real(8), allocatable :: pot(:),kin(:),psisquare(:)
    complex(8), allocatable :: psi(:),psi0(:),exppot(:),expkin(:)
 
-   open(unit=10,file='wavepacket')
+   open(unit=10,file='wavepacket_propagate')
    read(10,*) npoints               !Number of lattice points
    read(10,*) x0                    !Initial position
    read(10,*) alpha                 !Governs the initial width of the wave packet
@@ -158,6 +158,7 @@ end program propagate
           pot(j)=barrier*(16.d0*x**4 - 8.d0*x**2 + 1.d0)/au2kcalmol
        endif
        kin(j)=0.5d0*p**2/mass
+       ! Note: (0,1) is the imaginary unit, i
        exppot(j)=exp(-dt*(0,1)*pot(j))
        expkin(j)=exp(-dt*(0,1)*kin(j))
     end do

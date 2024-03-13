@@ -19,8 +19,8 @@ program propagate
    implicit none
 
    integer :: npoints,ntime,snapshot,i
-   real(8) :: alpha,dt,t,dx,x0, norm, energy, energy_t0, survival_probability
-   complex(8) :: correlation
+   real(8) :: alpha,dt,t,dx,x0, norm, energy, energy_t0, correlation
+   real(8) :: survival_probability
    real(8), allocatable :: pot(:),kin(:)
    complex(8), allocatable :: psi(:),psi0(:),exppot(:),expkin(:)
 
@@ -54,13 +54,12 @@ program propagate
 
    open(unit=12,file='norm')
    open(unit=13,file='energy')
-   open(unit=14,file='survival')
+   open(unit=14,file='correlation')
 
    write(12,'(a,12x,a)') 'Time', 'Norm'
    write(13,'(a,12x,a,2x,a,2x,a)') 'Time', 'Energy (Ha)', 'Energy (kcal/mol)',&
    & 'E(t) - E(t=0) (kcal/mol)'
-   ! write(14,'(a,12x,a,8x,a)') 'Time', 'C(t)', 'S(t)'
-   write(14,'(a,12x,a)') 'Time', 'S(t)'
+   write(14,'(a,12x,a,8x,a)') 'Time', 'C(t)', 'S(t)'
 
    !Set the wavepacket psi at t=0 equal psi0
    psi=psi0
@@ -80,7 +79,7 @@ program propagate
       & energy * au2kcalmol, (energy - energy_t0) * au2kcalmol
       call autocorrelation(npoints, psi0, psi, dx, correlation,&
       & survival_probability)
-      write(14,'(f10.2,2x,f10.4)') t, survival_probability
+      write(14,'(f10.2,2x,f10.4,2x,f10.4)') t, correlation, survival_probability
    end do                                            !End propagation
    close(12)
    close(13)
@@ -243,8 +242,7 @@ subroutine autocorrelation(n, psi0, psi, dx, C, S)
    integer, intent(in) :: n 
    complex(kind=8), dimension(n), intent(in) :: psi0, psi
    real(kind=8), intent(in) :: dx
-   complex(kind=8), intent(out) :: C
-   real(kind=8), intent(out) :: S
+   real(kind=8), intent(out) :: C, S
    integer :: i 
    
    ! Compute the autocorrelation function

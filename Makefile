@@ -1,20 +1,22 @@
+.PHONY: analysis
+
 propagation:
-	gfortran propagate.f90 graphics.f90 dfft.f -o propagate
+	gfortran src/propagate.f90 src/graphics.f90 src/dfft.f -o src/propagate
 
 analysis:
-	gfortran analysis.f90 dfft.f -o analysis
+	gfortran src/analysis.f90 src/dfft.f -o src/analysis
 
 propagate_HA:
-	@cd harmonic && ./../propagate && mv psi* data/
+	@cd harmonic && ./../src/propagate && mv psi* data/
 
 analyze_HA:
-	@cd harmonic && ./../analysis
+	@cd harmonic && ./../src/analysis
 
 propagate_DW:
-	@cd double-well && ./../propagate && mv psi* data/
+	@cd double-well && ./../src/propagate && mv psi* data/
 
 analyze_DW:
-	@cd double-well && ./../analysis
+	@cd double-well && ./../src/analysis
 
 animation_HA:
 	convert -set dispose previous -delay 20 harmonic/data/psi*.ps harmonic/harmonic.gif
