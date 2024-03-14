@@ -1,6 +1,6 @@
-# Number of eigenfunctions to include in the wavefunction
+# Number of eigenfunctions to include in the WF expansion
 4
-# Coefficients of the LC (weight of each eigenfunction)
+# Coefficients, c_i
 1.0
 0.0
 0.0

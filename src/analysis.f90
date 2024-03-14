@@ -1,4 +1,84 @@
 !-----------------!
+module IO
+!-----------------!
+   ! Module for Input/Output procedures
+   contains
+
+   ! -------------------------------------------!
+   function file_exists(filename) result(res)
+   ! -------------------------------------------!
+      !
+      ! Function to check if a file exists
+      !
+      implicit none
+      character(len=*),intent(in) :: filename
+      logical :: res
+
+      ! Check if the file exists
+      inquire(file=trim(filename), exist=res)
+
+   end function
+   ! -------------------------------------------!
+
+   ! -------------------------------------------!
+   subroutine read_coefficients(filename, n_HA, coeff)
+   ! -------------------------------------------!
+      !
+      ! Subroutine to read the coefficients, c_n, from a file
+      !
+      implicit none
+      character(len=*), intent(in) :: filename
+      integer, intent(out) :: n_HA 
+      real(kind=8), dimension(:), allocatable, intent(out) :: coeff
+      integer :: i, n, uf, stat
+      real(kind=8) :: cn 
+
+      ! Chech if the file exists
+      if(.not. file_exists(filename)) then
+         write(*,*) 'File ', trim(filename), ' does not exist'
+         stop
+      endif
+      
+      ! Open input file
+      open(newunit=uf, file=trim(filename), status='old', action='read')
+
+      ! Read number of eigenfunctions to include in the WF
+      read(uf,*)
+      read(uf,*) n_HA
+
+      ! Get dimensions of coeff
+      read(uf,*)
+      n = -1
+      stat = 0
+      do while(stat == 0)
+         n = n + 1
+         read(uf,*,iostat=stat) cn
+      enddo
+                          
+      ! Allocate coeff
+      allocate(coeff(n))
+
+      ! Rewind input file unitfile
+      rewind(uf)
+
+      ! Skip rows
+      do i=1, 3
+         read(uf,*)
+      end do
+
+      ! Read the coefficients into the array coeff
+      do i=1, n
+         read(uf,*) coeff(i)
+      end do
+      
+      !
+      return
+   end subroutine read_coefficients 
+   ! -------------------------------------------!
+end module IO
+!-----------------!
+
+!-----------------!
 module parameters
 !-----------------!
 
@@ -6,23 +86,177 @@ module parameters
    real(8), parameter :: mass = 1822.88839d0 != 1 atomic mass unit (=1 g/mol)
    real(8), parameter :: pi=3.141592653589793d0
    real(8), parameter :: au2kcalmol=627.509d0, fs2au=41.341373336561d0, au2invcm=219474.63d0
+   real(8), parameter :: hbar=1.d0  ! atomic units
    real(8) :: angfreq, barrier
-   character(10) :: potentialtype
+   character(len=80) :: wavepacket_type, potentialtype 
 
 end module parameters
 !---------------------!
 
 !-----------------!
-program propagate
+module modulo_OA1D
 !-----------------!
    use parameters
+   !
+   ! Modulo para el calculo de las funciones propias del oscilador armonico
+   ! unidimensional
+   !
+   implicit none
+   contains
+   ! function E_OA1D(n, hbar, k, m) result(energia)
+   !    !
+   !    ! Funcion para el calculo de las energias propias del oscilador
+   !    ! armonico unidimensional
+   !    !
+   !    implicit none
+   !    integer, intent(in) :: n
+   !    real*8, intent(in) :: hbar, k, m
+   !    real*8 :: omega, energia
+   !
+   !    omega = dsqrt(k/m)
+   !    energia = (n*1.d0 + 0.5d0)*hbar*omega
+   !
+   !    return
+   ! end function E_OA1D
+   !--------------------------------------------!
+   recursive function hermp(n, x) result(res_hp)
+   !--------------------------------------------!
+      !
+      ! Function to compute the Hermite polynomials using the recurrence relation
+      ! H_n(x) = 2xH_n-1(x) - 2(n-1)H_n-2(x)
+      ! taking into account that
+      ! H_0(x) = 1
+      ! H_1(x) = 2x
+      !
+      ! n: n-th Hermite polynomial
+      ! x: independent variable
+      !
+      ! n -> integer
+      ! x -> real
+      !
+      implicit none
+      integer, intent(in) :: n
+      real(kind=8), intent(in) :: x
+      real(kind=8) :: hp1, hp2, res_hp
+
+      if (n==0) then
+         res_hp = 1.d0
+      elseif (n==1) then
+         res_hp = 2.d0 * x
+      else
+         hp1 = 2.d0 * x * hermp(n-1, x)
+         hp2 = 2.d0 * dble(n-1) * hermp(n-2, x)
+         res_hp = hp1 - hp2
+      end if
+
+      return
+   end function hermp
+   !--------------------------------------------!
+    
+   !--------------------------------------!
+   function phi(n, x, m, omega) result(res_phi)
+   !--------------------------------------!
+      !
+      ! Function to compute the eigenstates, phi_n, of the 1D harmonic oscillator
+      !
+      ! n: n-th eigenstate
+      ! x: position (independent variable)
+      !
+      ! n -> integer
+      ! x -> real
+      !
+      implicit none
+      integer, intent(in) :: n
+      real(kind=8), intent(in) :: x, m, omega
+      real(kind=8) :: alpha, Nv, res_phi
+
+      ! For the 1D harmonic oscillator
+      alpha = m * omega/hbar
+
+      ! Note: factorial(n) = Gamma(n+1), where n is an integer number
+      Nv = (alpha/pi)**0.25d0 * 1.d0/dsqrt(2.**n * Gamma(dble(n+1)))
+
+      ! Eigenfunction
+      res_phi = Nv * exp(-alpha * x**2/2.d0) * hermp(n, dsqrt(alpha) * x)
+
+      return
+   end function phi
+   !--------------------------------------!
+
+   !--------------------------------------------------------------------!
+   subroutine initpsi_harmonic(n_HA, npoints, dx, coeff, m, omega, psi0)
+   !--------------------------------------------------------------------!
+      implicit none
+      integer, intent(in) :: n_HA, npoints 
+      real(8), intent(in) :: dx, coeff(:), m, omega
+      complex(8), dimension(:) :: psi0
+      integer :: i, j, k, ierr 
+      real(kind=8) :: x, suma, psisq, normalization_cons
+
+      ! Check that the specified number of eigenfunctions is less or equal
+      ! than the total number of coefficients
+      if (n_HA > size(coeff)) then
+         write(6,'(a)') 'ERROR initpsi_harmonic: n_HA > size(coeff)'
+         stop
+      end if
+
+      ! Main loop for the wavefunction over position
+      do i=-npoints/2+1,npoints/2
+         ! Compute the position
+         x=dble(i)*dx
+
+         ! Store first the possitive positions
+         if (i>0) then
+            j=i
+         else     
+            j=i+npoints
+         endif
+
+         ! Compute the wavefunction as a LC of HA eigenfunctions
+         suma = 0.d0
+         do k=1, n_HA
+            suma = suma + coeff(k) * phi(k, x, m, omega)
+         end do
+         psi0(j) = suma
+      end do
+
+      ! Normalize the wavefunction:
+      ! Compute the sum |Psi|^2
+      psisq = 0.d0
+      do j = 1, npoints
+         psisq = psisq + abs(psi0(j))**2
+      end do
+      psisq = psisq * dx
+
+      ! Compute the normalization constant
+      normalization_cons = dsqrt(1.d0/(psisq))
+
+      ! Normalize the wavefunction
+      psi0 = normalization_cons * psi0
+
+   end subroutine initpsi_harmonic
+   !--------------------------------------------------------------!
+
+end module
+!-----------------!
+
+!-----------------!
+program propagate
+!-----------------!
+   use IO
+   use parameters
+   use modulo_OA1D
    implicit none
 
-   integer :: npoints,ntime,snapshot,i
-   real(8) :: alpha,dt,dx,x0, energy_t0
+   integer :: npoints,ntime,snapshot,i, n_HA
+   real(8) :: alpha,dt,dx,x0, energy_t0, m, omega
    real(8), dimension(:), allocatable :: pot, kin, t, norm, energy, &
-   & survival_probability, eigenval_spectrum
+   & survival_probability, eigenval_spectrum, coeff(:)
    complex(8), dimension(:), allocatable :: psi, psi0, exppot, expkin, correlation
+
+   open(unit=10,file='wavepacket_propagate')
+   read(10,*) wavepacket_type       !Type of wavepacket: Gaussian or harmonic
+   close(10)
 
    open(unit=10,file='wavepacket_analysis')
    read(10,*) npoints               !Number of lattice points
@@ -50,9 +284,21 @@ program propagate
 
    dx=length/dble(npoints)
 
-   call initpsi(npoints,dx,alpha,x0,psi0)              !Obtain initial wavepacket psi0
-   call fourier(0,npoints,psi0)                        !Initialize the FFT
-   call operators(npoints,dx,dt,pot,kin,exppot,expkin) !Calculate the kinetic and potential operators
+      ! Compute initial wavefunction, psi0
+   m = 1.d0
+   omega = 1.d0
+   if (wavepacket_type=='gaussian' .or. wavepacket_type=='Gaussian') then
+      call initpsi_gaussian(npoints,dx,alpha,x0,psi0)
+   elseif (wavepacket_type=='harmonic' .or. wavepacket_type=='Harmonic') then
+      call read_coefficients('LC-coefficients', n_HA, coeff)
+      call initpsi_harmonic(n_HA, npoints, dx, coeff, m, omega, psi0)
+   endif
+
+   !Initialize the FFT
+   call fourier(0,npoints,psi0)
+
+   !Calculate the kinetic and potential operators
+   call operators(npoints,dx,dt,pot,kin,exppot,expkin)
 
    open(unit=12,file='norm')
    open(unit=13,file='energy')
@@ -107,9 +353,9 @@ program propagate
 end program propagate
 !---------------------!
 
-!--------------------------------------------!
-subroutine initpsi(npoints,dx,alpha,x0,psi0)
-!--------------------------------------------!
+!---------------------------------------------------!
+subroutine initpsi_gaussian(npoints,dx,alpha,x0,psi0)
+!---------------------------------------------------!
    implicit none
 
    integer :: i,j,npoints
@@ -132,8 +378,8 @@ subroutine initpsi(npoints,dx,alpha,x0,psi0)
       psi0(i)=psi0(i)*norm
    end do
 
-end subroutine initpsi
-!----------------------!
+end subroutine initpsi_gaussian
+!-------------------------------!
 
 !---------------------------------------------------------!
 subroutine operators(npoints,dx,dt,pot,kin,exppot,expkin)
