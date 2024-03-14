@@ -94,7 +94,7 @@ program propagate
    write(15,'(a,4x,a,4x,a,4x,a)') 'Energy (kcal/mol)', 'Energy (cm-1)', &
    'C(E) (kcal/mol)', 'C(E) (cm-1)'
    do i=1,ntime
-      write(15,'(f10.4,10x,f10.4,4x,f10.4,13x,f10.4)') energy(i), &
+      write(15,'(f10.4,10x,f10.4,4x,f10.4,13x,f15.4)') energy(i), &
       & energy(i) * au2invcm, eigenval_spectrum(i), &
       & survival_probability(i) * au2invcm
    end do

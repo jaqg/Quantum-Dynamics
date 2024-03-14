@@ -1,0 +1,7 @@
+# Number of eigenfunctions to include in the wavefunction
+4
+# Coefficients of the LC (weight of each eigenfunction)
+1.0
+0.0
+0.0
+0.0
